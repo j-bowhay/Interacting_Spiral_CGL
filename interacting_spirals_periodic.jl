@@ -4,6 +4,7 @@ using OrdinaryDiffEq: solve, ODEProblem, Tsit5, Rosenbrock23
 using ProgressLogging
 using LaTeXStrings
 using LinearAlgebra
+using DSP
 
 ##
 
@@ -86,41 +87,6 @@ problem = ODEProblem(rhs!, U0, (0.0, 100.0), params);
                   abstol = 1e-4, reltol = 1e-4);
 
 ## solution plot
-function radial_average(u_i)
-    n = size(u_i, 1)
-    # 1. Compute 2D FFT magnitude and center zero frequency
-    V = fftshift(abs.(fft2(u_i)))
-
-    # 2. Create coordinate grids centered on (n/2+1, n/2+1)
-    center = (n / 2) + 1
-    y = collect(1:n)
-    x = collect(1:n)
-    Y = y .- center
-    X = x .- center
-    # Use broadcasting to create matrices for X and Y coords
-    X_grid = repeat(X', n, 1)  # size n x n, rows are x coords
-    Y_grid = repeat(Y, 1, n)   # size n x n, columns are y coords
-
-    # 3. Calculate radial distances matrix and bin indices
-    R = round.(Int, sqrt.(X_grid.^2 .+ Y_grid.^2)) .+ 1  # bin indices
-
-    # 4. Aggregate values by radial bin
-    max_bin = maximum(R)
-    v_sum = zeros(Float64, max_bin)
-    v_count = zeros(Int, max_bin)
-
-    # Use linear indexing to accumulate sums and counts efficiently
-    for i in 1:n, j in 1:n
-        idx = R[i,j]
-        v_sum[idx] += V[i,j]
-        v_count[idx] += 1
-    end
-
-    # 5. Compute radial average (avoid division by zero)
-    v_mean = v_sum ./ v_count
-
-    return v_mean
-end
 
 fps = 20;
 
@@ -133,20 +99,27 @@ heatmap_data = Observable(u[1]')
 heatmap!(ax, x2, y2, heatmap_data, colormap = :viridis)
 
 gr = GridLayout(fig[1, 2])
-ax2 = Axis(gr[1, 1], xlabel = L"t", ylabel = "Norm")
+ax2 = Axis(gr[1, 1], xlabel = L"t", ylabel = "Norm", title = "Solution Norm")
 lines!(ax2, sol.t, [norm(ut[:]) for ut in u];)
 
 vline_pos = Observable(sol.t[1])
 vlines!(ax2, vline_pos, color=:red)
 
-fourier_modes = [abs.(fftshift(sol[:, :, 1, i])) for i in 1:length(sol.t)]
-ax3 = Axis(gr[2, 1], xlabel = L"k", ylabel = L"|û_k|", yscale=log10)
-mode_data = Observable(vec(fourier_modes[1]))
-lines!(ax3, mode_data)
+ax3 = Axis(gr[2, 1], xlabel = L"k\approx\sqrt{k_1^2 + k_2^2}",
+           ylabel = L"\frac{1}{n_k}\sum|û_k|", yscale=log10,
+           title = "Fourier modes", limits = (nothing, (10^-25, 1)))
+pxx = periodogram(u[1], radialavg = true, nfft = (n, n))
+
+f = Observable(freq(pxx))
+p = Observable(power(pxx))
+
+scatter!(ax3, f, p)
 
 record(fig, "heatmap_animation.mp4", 1:length(u); framerate=fps) do i
     heatmap_data[] = u[i]'
     ax.title = "t = $(round(sol.t[i], digits=3))"
     vline_pos[] = sol.t[i]
-    mode_data[] = vec(fourier_modes[i])
+    pxx = periodogram(u[i], radialavg = true, nfft = (n, n))
+    f[] = freq(pxx)
+    p[] = power(pxx)
 end

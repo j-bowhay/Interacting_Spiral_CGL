@@ -7,8 +7,7 @@ using LinearAlgebra
 
 ##
 
-d1 = 0.1;
-d2 = 0.1;
+d = 0.1;
 β = 1.0;
 
 Lx = 20;  # size of X-dim
@@ -19,7 +18,7 @@ x2 = range(-Lx/2, Lx/2, n+1);
 y2 = range(-Ly/2, Ly/2, n+1);
 kx = (2*pi/Lx)*[0:(n/2-1); -n/2:-1];
 ky = (2*pi/Ly)*[0:(n/2-1); -n/2:-1];
-K22 = kx'.^2 .+ ky.^2;  # Laplacian in Fourier space
+K22 = -d*(kx'.^2 .+ ky.^2);  # Laplacian in Fourier space
 
 ## initial conditions
 
@@ -46,7 +45,7 @@ u2v = similar(u0)
 uv2 = similar(u0)
 
 function rhs!(dU, U, params, t)
-    β, d1, d2, K22, u3, v3, u2v, uv2 = params
+    β, K22, u3, v3, u2v, uv2 = params
 
     ut = @view U[:, :, 1]
     vt = @view U[:, :, 2]
@@ -62,12 +61,12 @@ function rhs!(dU, U, params, t)
     ut_nl = fft(u - u3 - uv2 + β*u2v + β*v3)
     vt_nl = fft(v - u2v - v3 - β*u3 - β*uv2)
 
-    @. dU[:, :, 1] = -d1*K22*ut + ut_nl
-    @. dU[:, :, 2] = -d2*K22*vt + vt_nl
+    @. dU[:, :, 1] = K22*ut + ut_nl
+    @. dU[:, :, 2] = K22*vt + vt_nl
 end
 
 ## time-stepping
-params = (β, d1, d2, K22, u3, v3, u2v, uv2);
+params = (β, K22, u3, v3, u2v, uv2);
 problem = ODEProblem(rhs!, U0, (0.0, 10.0), params);
 sol = solve(problem, Tsit5(), saveat=0.1, progress=true, progress_steps=10,
             abstol = 1e-3, reltol = 1e-3)

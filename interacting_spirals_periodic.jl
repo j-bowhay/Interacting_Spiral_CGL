@@ -67,13 +67,13 @@ sol = solve(problem, Tsit5(), saveat=0.1, progress=true, progress_steps=10,
 
 ## solution plot
 
+u = [real(ifft(sol[:, :, 1, i])) ./ (n^2) for i in 1:length(sol.t)];
 
 @gif for i in 1:length(sol.t)
-    u = real(ifft(sol[:, :, 1, i])) ./ (n^2)
-    heatmap(u; axis = nothing, border = :none, cbar = false, ratio = :equal, yflip=true)
+    heatmap(u[i]; axis = nothing, border = :none, cbar = false, ratio = :equal, yflip=true)
     title!("t = $(round(sol.t[i], digits=2))")
 end(fps=10)
 
 ## diagnostics plots
 
-plot(sol.t, [norm(u[:,:,i][:]) for i in 1:length(sol.t)])
+plot(sol.t, [norm(u[i]) for i in 1:length(sol.t)])

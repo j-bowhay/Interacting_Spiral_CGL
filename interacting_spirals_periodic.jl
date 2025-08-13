@@ -40,8 +40,13 @@ U0 = cat(fft(u0), fft(v0); dims=3);
 
 ## rhs
 
+u3 = similar(u0)
+v3 = similar(v0)
+u2v = similar(u0)
+uv2 = similar(u0)
+
 function rhs!(dU, U, params, t)
-    β, d1, d2, K22 = params
+    β, d1, d2, K22, u3, v3, u2v, uv2 = params
 
     ut = @view U[:, :, 1]
     vt = @view U[:, :, 2]
@@ -49,8 +54,10 @@ function rhs!(dU, U, params, t)
     u = real(ifft(ut))
     v = real(ifft(vt))
 
-    u3, v3 = @. u^3, v^3
-    u2v, uv2  = @. (u^2)*v, u*(v^2)
+    @. u3 = u^3
+    @. v3 = v^3
+    @. u2v = (u^2)*v
+    @. uv2 = u*(v^2)
 
     ut_nl = fft(u - u3 - uv2 + β*u2v + β*v3)
     vt_nl = fft(v - u2v - v3 - β*u3 - β*uv2)
@@ -60,7 +67,7 @@ function rhs!(dU, U, params, t)
 end
 
 ## time-stepping
-params = (β, d1, d2, K22);
+params = (β, d1, d2, K22, u3, v3, u2v, uv2);
 problem = ODEProblem(rhs!, U0, (0.0, 10.0), params);
 sol = solve(problem, Tsit5(), saveat=0.1, progress=true, progress_steps=10,
             abstol = 1e-3, reltol = 1e-3)

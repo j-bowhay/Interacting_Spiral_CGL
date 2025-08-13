@@ -43,33 +43,47 @@ u3 = similar(u0)
 v3 = similar(v0)
 u2v = similar(u0)
 uv2 = similar(u0)
+u_real = similar(u0, Float64)  # for real part of ifft
+v_real = similar(v0, Float64)  # for real part of ifft
+temp_complex1 = similar(U0[:,:,1])  # temporary for nonlinear terms
+temp_complex2 = similar(U0[:,:,1])  # temporary for nonlinear terms
+
+fft_plan = plan_fft!(temp_complex1)
+ifft_plan = plan_ifft!(temp_complex1)
 
 function rhs!(dU, U, params, t)
-    β, K22, u3, v3, u2v, uv2 = params
+    β, K22, u3, v3, u2v, uv2, u_real, v_real, temp_complex1, temp_complex2, fft_plan, ifft_plan = params
 
     ut = @view U[:, :, 1]
     vt = @view U[:, :, 2]
 
-    u = real(ifft(ut))
-    v = real(ifft(vt))
+    copyto!(temp_complex1, ut)
+    ifft_plan * temp_complex1
+    @. u_real = real(temp_complex1)
+    copyto!(temp_complex2, vt)
+    ifft_plan * temp_complex2
+    @. v_real = real(temp_complex2)
 
-    @. u3 = u^3
-    @. v3 = v^3
-    @. u2v = (u^2)*v
-    @. uv2 = u*(v^2)
+    @. u3 = u_real^3
+    @. v3 = v_real^3
+    @. u2v = (u_real^2) * v_real
+    @. uv2 = u_real * (v_real^2)
 
-    ut_nl = fft(u - u3 - uv2 + β*u2v + β*v3)
-    vt_nl = fft(v - u2v - v3 - β*u3 - β*uv2)
+    @. temp_complex1 = u_real - u3 - uv2 + β*u2v + β*v3
+    fft_plan * temp_complex1
 
-    @. dU[:, :, 1] = K22*ut + ut_nl
-    @. dU[:, :, 2] = K22*vt + vt_nl
+    @. temp_complex2 = v_real - u2v - v3 - β*u3 - β*uv2
+    fft_plan * temp_complex2
+
+    @. dU[:, :, 1] = K22*ut + temp_complex1
+    @. dU[:, :, 2] = K22*vt + temp_complex2
 end
 
 ## time-stepping
-params = (β, K22, u3, v3, u2v, uv2);
-problem = ODEProblem(rhs!, U0, (0.0, 10.0), params);
-sol = solve(problem, Tsit5(), saveat=0.1, progress=true, progress_steps=10,
-            abstol = 1e-3, reltol = 1e-3)
+params = (β, K22, u3, v3, u2v, uv2, u_real, v_real, temp_complex1, temp_complex2, fft_plan, ifft_plan);
+problem = ODEProblem(rhs!, U0, (0.0, 100.0), params);
+@time sol = solve(problem, Tsit5(), saveat=0.5, progress=true, progress_steps=10,
+                  abstol = 1e-3, reltol = 1e-3);
 
 ## solution plot
 

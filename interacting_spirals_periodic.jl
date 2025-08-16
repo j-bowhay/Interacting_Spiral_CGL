@@ -8,7 +8,7 @@ using DSP
 
 ##
 
-ϵ = 2;
+ϵ = 0;
 d = 0.1;
 β = 1.0;
 
@@ -55,7 +55,7 @@ ifft_plan = plan_ifft!(temp_complex1)
 g(x, y, A, B, C) = A + B*(cos(0.5x) + cos(0.5y)) + C*(cos(0.5*(3x - y)) + cos(0.5*(x + 3y)))
 
 function rhs!(dU, U, params, t)
-    β, K22, u3, v3, u2v, uv2, u_real, v_real, temp_complex1, temp_complex2, fft_plan, ifft_plan, u_perturb, v_perturb = params
+    β, K22, u3, v3, u2v, uv2, u_real, v_real, temp_complex1, temp_complex2, fft_plan, ifft_plan, u_perturb, v_perturb, mask = params
 
     ut = @view U[:, :, 1]
     vt = @view U[:, :, 2]
@@ -78,15 +78,19 @@ function rhs!(dU, U, params, t)
     @. temp_complex2 = v_real - u2v - v3 - β*u3 - β*uv2 + v_perturb
     fft_plan * temp_complex2
 
-    @. dU[:, :, 1] = K22*ut + temp_complex1
-    @. dU[:, :, 2] = K22*vt + temp_complex2
+    @. dU[:, :, 1] = K22*ut + mask.*temp_complex1
+    @. dU[:, :, 2] = K22*vt + mask.*temp_complex2
 end
+
+# de-aliasing mask
+mask_tmp = abs.([0:(n/2-1); -n/2:-1]) .< n/3;
+mask = mask_tmp' .* mask_tmp;
 
 ## time-stepping
 params = (β, K22, u3, v3, u2v, uv2, u_real, v_real, temp_complex1, temp_complex2,
           fft_plan, ifft_plan, ϵ*g.(x2', y2, 0.028, 0.05, 0.06),
-          ϵ*g.(x2', y2, -0.0044, -0.02, 0.01));
-problem = ODEProblem(rhs!, U0, (0.0, 200.0), params);
+          ϵ*g.(x2', y2, -0.0044, -0.02, 0.01), mask);
+problem = ODEProblem(rhs!, U0, (0.0, 50.0), params);
 @time sol = solve(problem, Tsit5(), saveat=0.5, progress=true, progress_steps=10,
                   abstol = 1e-4, reltol = 1e-4);
 
